@@ -217,7 +217,7 @@ end
 
 endmodule
 
-module lookup3 (
+module hash (
   input CLK
 , input RST
 , input [7:0]  key_length   //from memcache protocol header

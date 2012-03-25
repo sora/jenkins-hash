@@ -1,24 +1,19 @@
-`timescale 1ns / 1ns
-`define dbg  1
-
 module sim();
-reg       tb_enable = 1'b0;
-reg[7:0]  tb_key_length;
-reg[31:0] tb_k0, tb_k1, tb_k2;
 
-wire CLK;
-wire RST;
+reg clk, rst;
+initial   clk = 1'b0;
+always #6 clk = ~clk; /* 83.333 MHz */
+
+reg[31:0]  tb_k0, tb_k1, tb_k2;
+reg[7:0]   tb_key_length;
+reg        tb_enable = 1'b0;
+
 wire[31:0] tb_hashkey;
 wire tb_complete;
 
-clock clock (
-  .CLK(CLK)
-, .RST(RST)
-);
-
-lookup3 lookup3 (
-  .CLK(CLK)
-, .RST(RST)
+hash hash (
+  .CLK(clk)
+, .RST(rst)
 , .key_length(tb_key_length)
 , .k0(tb_k0)
 , .k1(tb_k1)
@@ -26,41 +21,85 @@ lookup3 lookup3 (
 , .hashkey(tb_hashkey)
 );
 
-initial begin
-  #100 tb_enable = 1'b1; tb_key_length = 4'hd; tb_k0 = "abcd"; tb_k1 = "efgh"; tb_k2 = "ijkl";
-  #100 tb_enable = 1'b1; tb_key_length = 4'hd; tb_k0 = "abcd"; tb_k1 = "efgh"; tb_k2 = "ijkl";
-  #100 tb_enable = 1'b1; tb_key_length = 4'hd; tb_k0 = "abcd"; tb_k1 = "efgh"; tb_k2 = "ijkl";
-  #100 $finish;
+task waitaclock;
+begin
+  @(posedge clk);
+  #1;
+end
+endtask
+
+task word250;
+  input [7:0] wc;
+  input [2000:1] key;
+begin
+  tb_key_length = wc;
+end
+endtask
+
+always begin
+  $dumpfile("hash.vcd");
+  $dumpvars(0, sim.hash);
+
+  rst = 1'b1;
+
+  waitaclock;
+
+  rst = 1'b0;
+
+  waitaclock;
+
+  word250(8'd3, "abc");
+  word250(8'd12, "abcdefghijkl");
+  word250(8'd15, "abcdefghijklmno");
+  word250(8'd100, "abcdefghijklmnopqrstabcdefghijklmnopqrstabcdefghijklmnopqrstabcdefghijklmnopqrstabcdefghijklmnopqrst");
+  word250(8'd200, "abcdefghijklmnopqrstabcdefghijklmnopqrstabcdefghijklmnopqrstabcdefghijklmnopqrstabcdefghijklmnopqrstabcdefghijklmnopqrstabcdefghijklmnopqrstabcdefghijklmnopqrstabcdefghijklmnopqrstabcdefghijklmnopqrst");
+  word250(8'd250, "abcdefghijklmnopqrstabcdefghijklmnopqrstabcdefghijklmnopqrstabcdefghijklmnopqrstabcdefghijklmnopqrstabcdefghijklmnopqrstabcdefghijklmnopqrstabcdefghijklmnopqrstabcdefghijklmnopqrstabcdefghijklmnopqrstabcdefghijklmnopqrstabcdefghijklmnopqrstabcdefghij");
+
+  #1000;
+
+  $finish;
 end
 
-initial begin
-  $dumpfile("lookup3.vcd");
-  $dumpvars(0, sim.lookup3);
-end
+parameter[1:0] s0 = 2'b00 //idle
+             , s1 = 2'b01
+             , s2 = 2'b10
+             , s3 = 2'b11;
 
-always @(posedge CLK) begin
-  if (RST)
-    tb_enable <= 1'b0;
-  else begin
-    if (tb_hashkey)
-      $display("key: %s, hashkey: %h", {tb_k0, tb_k1, tb_k2}, tb_hashkey);
+reg[1:0]    state = s0;
+reg[11:0]   wp;
+reg[2000:1] key;
+
+always @(posedge clk) begin
+  if (rst) begin
+    state <= s0;
+    wp    <= 11'b0;
+    key   <= 2000'b0;
+  end else begin
     if (tb_enable)
-      tb_enable <= 1'b0;
+      state <= s1;
+    case (state)
+      s1: begin
+        wp <= wp - 96;
+        if (wp > 7'd96) begin
+          tb_k0 <= key[wp :- 7'd32];
+          tb_k1 <= key[wp :- 7'd64];
+          tb_k2 <= key[wp :- 7'd96];
+        end else if (wp > 64) begin
+          tb_k0 <= key[wp :- 7'd32];
+          tb_k1 <= key[wp :- 7'd64];
+          tb_k2 <= 31'b0;
+        end else if (wp > 32) begin
+          tb_k0 <= key[wp :- 7'd32];
+          tb_k1 <= 31'b0;
+          tb_k2 <= 31'b0;
+        end else begin
+          state     <= s0;
+          tb_enable <= 1'b0;
+        end
+      end
+    endcase
   end
 end
 
-endmodule // sim()
-
-module clock (
-  output reg CLK
-, output reg RST
-);
-
-initial CLK = 1'b0;
-initial RST = 1'b0;
-always #1 begin
-  CLK <= ~CLK;
-  RST <= 1'b0;
-end
 endmodule
 
