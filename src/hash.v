@@ -1,6 +1,9 @@
 /*
  * hash.v by Yohei Kuga <sora@haeena.net>
  * A jenkinks hash function in Verilog-HDL
+ *
+ * Original code in C by Bob Jenkins, 1996
+ * http://burtleburtle.net/bob/c/lookup3.c
  */
 
 module hash_r1 (
@@ -25,7 +28,7 @@ reg[31:0] a2, b2, c2;
 reg[31:0] a3, b3, c3;
 reg[7:0]  w0, w1, w2, w3;
 
-wire[7:0]  next_w0 = iw - 32'hc;
+wire[7:0]  next_w0 = iw - 8'd12;
 wire[31:0] next_a0 = ia + k0;
 wire[31:0] next_b0 = ib + k1;
 wire[31:0] next_c0 = ic + k2;
@@ -43,9 +46,9 @@ always @(posedge CLK) begin
     oa <= 32'b0;
     ob <= 32'b0;
     oc <= 32'b0;
-    ow <= 7'b0;
+    ow <= 8'b0;
   end else begin
-    if (iw > 12) begin
+    if (iw > 8'd12) begin
       a0 <= next_a0;
       c0 <= next_c0;
       b0 <= next_b0;
@@ -147,62 +150,62 @@ end
 
 always @* begin
   case (iw)
-    4'hc: begin
+    8'd12: begin
       next_c0 <= ic + k2;
       next_b0 <= ib + k1;
       next_a0 <= ia + k0;
     end
-    4'hb: begin
+    8'd11: begin
       next_c0 <= ic + k2 & 32'h00FFFFFF;
       next_b0 <= ib + k1;
       next_a0 <= ia + k0;
     end
-    4'ha: begin
+    8'd10: begin
       next_c0 <= ic + k2 & 32'h0000FFFF;
       next_b0 <= ib + k1;
       next_a0 <= ia + k0;
     end
-    4'h9: begin
+    8'd9: begin
       next_c0 <= ic + k2 & 32'h000000FF;
       next_b0 <= ib + k1;
       next_a0 <= ia + k0;
     end
-    4'h8: begin
+    8'd8: begin
       next_c0 <= ic;
       next_b0 <= ib + k1;
       next_a0 <= ia + k0;
     end
-    4'h7: begin
+    8'd7: begin
       next_c0 <= ic;
       next_b0 <= ib + k1 & 32'h00FFFFFF;
       next_a0 <= ia + k0;
     end
-    4'h6: begin
+    8'd6: begin
       next_c0 <= ic;
       next_b0 <= ib + k1 & 32'h0000FFFF;
       next_a0 <= ia + k0;
     end
-    4'h5: begin
+    8'd5: begin
       next_c0 <= ic;
       next_b0 <= ib + k1 & 32'h000000FF;
       next_a0 <= ia + k0;
     end
-    4'h4: begin
+    8'd4: begin
       next_c0 <= ic;
       next_b0 <= ib;
       next_a0 <= ia + k0;
     end
-    4'h3: begin
+    8'd3: begin
       next_c0 <= ic;
       next_b0 <= ib;
       next_a0 <= ia + k0 & 32'h00FFFFFF;
     end
-    4'h2: begin
+    8'd2: begin
       next_c0 <= ic;
       next_b0 <= ib;
       next_a0 <= ia + k0 & 32'h0000FFFF;
     end
-    4'h1: begin
+    8'd1: begin
       next_c0 <= ic;
       next_b0 <= ib;
       next_a0 <= ia + k0 & 32'h000000FF;
@@ -227,7 +230,7 @@ module hash (
 , output reg[31:0] hashkey
 );
 
-parameter interval = 0;  //tmp
+parameter interval = 1'b0;  //tmp
 
 wire[31:0] a[0:21];
 wire[31:0] b[0:21];
