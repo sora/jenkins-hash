@@ -178,6 +178,7 @@ endmodule
 module hash (
   input CLK
 , input RST
+, input enable
 , input [7:0]  key_length   //from memcache protocol header
 , input [31:0] k0
 , input [31:0] k1
@@ -202,13 +203,15 @@ assign w[0] = key_length;
 /* round 1 ~ nloop */
 genvar i;
 generate
-  for (i=1; i<nloop+1; i=i+1) begin :loop
+//  for (i=1; i<nloop+1; i=i+1) begin :loop
+  for (i=1; i<22; i=i+1) begin :loop
     hash_r1 round (CLK, RST,a[i-1], b[i-1], c[i-1], w[i-1], k0, k1, k2, a[i], b[i], c[i], w[i]);
   end
 endgenerate
 
 /* last round */
-hash_r2 lastround (CLK, RST, a[nloop], b[nloop], c[nloop], w[nloop], k0, k1, k2, lc);
+//hash_r2 lastround (CLK, RST, a[nloop], b[nloop], c[nloop], w[nloop], k0, k1, k2, lc);
+hash_r2 lastround (CLK, RST, a[21], b[21], c[21], w[21], k0, k1, k2, lc);
 
 always @(posedge CLK) begin
   if (RST)
