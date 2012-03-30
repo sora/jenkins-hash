@@ -6,7 +6,10 @@
  * http://burtleburtle.net/bob/c/lookup3.c
  */
 
-module hash_r1 (
+module hash_r1 #(
+  parameter maxwords = 250                  // MAX number of key length.
+, parameter nloop    = div12p1(maxwords)
+)(
   input CLK
 , input RST
 , input [31:0] ia
@@ -21,6 +24,14 @@ module hash_r1 (
 , output reg[31:0] oc
 , output reg[7:0]  ow
 );
+
+function integer div12p1;
+  input integer nwords;
+begin
+  for (div12p1=0; nwords>0; div12p1=div12p1+1)
+    nwords = nwords - 12;
+end
+endfunction
 
 reg[31:0] a0, b0, c0;
 reg[31:0] a1, b1, c1;
@@ -53,7 +64,7 @@ always @(posedge CLK) begin
       c0 <= next_c0;
       b0 <= next_b0;
       w0 <= next_w0;
-      a1 <= next_a1;
+      a1 <= next_a0;
       c1 <= next_c1;
       b1 <= (b0 - next_a1) ^ {next_a1[25:0], next_a1[31:26]};
       w1 <= w0;
@@ -244,16 +255,16 @@ assign b[0] = k1 + 32'hDEADBEEF + key_length + interval;
 assign c[0] = k2 + 32'hDEADBEEF + key_length + interval;
 assign w[0] = key_length;
 
-/* halfway round */
+/* round 1 ~ nloop */
 genvar i;
 generate
-  for (i=1; i<22; i=i+1) begin :loop
+  for (i=1; i<nloop+1; i=i+1) begin :loop
     hash_r1 round (CLK, RST,a[i-1], b[i-1], c[i-1], k0, k1, k2, w[i-1], a[i], b[i], c[i], w[i]);
   end
 endgenerate
 
 /* last round */
-hash_r2 lastround (CLK, RST, a[21], b[21], c[21], k0, k1, k2, w[21], lc);
+hash_r2 lastround (CLK, RST, a[nloop], b[nloop], c[nloop], k0, k1, k2, w[nloop], lc);
 
 always @(posedge CLK) begin
   if (RST)
