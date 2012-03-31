@@ -26,13 +26,15 @@ module hash_r1 #(
 , output reg[7:0]  ow
 );
 
-function integer div12p1;
-  input integer nwords;
+/*
+function [4:0] div12p1;
+  input [7:0] nwords;
 begin
   for (div12p1=0; nwords>0; div12p1=div12p1+1)
     nwords = nwords - 12;
 end
 endfunction
+*/
 
 wire[7:0]  w0 = iw - 8'd12;
 wire[31:0] a0 = ia + k0;
@@ -178,21 +180,20 @@ endmodule
 module hash (
   input CLK
 , input RST
-, input enable
-, input [7:0]  key_length   //from memcache protocol header
-, input [31:0] k0
-, input [31:0] k1
-, input [31:0] k2
+, input [7:0] charcnt  // remaining character counts
+, input [7:0] char     // character of key
 , output reg[31:0] hashkey
 );
 
-parameter interval = 1'b0;  //tmp
+parameter interval = 1'b0;  // tmp
+
+reg[31:0] k0, k1, k2;
+reg[3:0]  count12;
 
 wire[31:0] a[0:21];
 wire[31:0] b[0:21];
 wire[31:0] c[0:21];
-wire[7:0]  w[0:21];
-wire[31:0] lc;
+wire[31:0] lc;       // last c
 
 /* round 0 */
 assign a[0] = k0 + 32'hDEADBEEF + key_length + interval;
@@ -201,17 +202,54 @@ assign c[0] = k2 + 32'hDEADBEEF + key_length + interval;
 assign w[0] = key_length;
 
 /* round 1 ~ nloop */
-genvar i;
 generate
-//  for (i=1; i<nloop+1; i=i+1) begin :loop
+  genvar i;
   for (i=1; i<22; i=i+1) begin :loop
-    hash_r1 round (CLK, RST,a[i-1], b[i-1], c[i-1], w[i-1], k0, k1, k2, a[i], b[i], c[i], w[i]);
+    hash_r1 round (CLK, RST, a[i-1], b[i-1], c[i-1], k0, k1, k2, charcnt, a[i], b[i], c[i]);
   end
 endgenerate
 
 /* last round */
-//hash_r2 lastround (CLK, RST, a[nloop], b[nloop], c[nloop], w[nloop], k0, k1, k2, lc);
-hash_r2 lastround (CLK, RST, a[21], b[21], c[21], w[21], k0, k1, k2, lc);
+hash_r2 lastround (CLK, RST, a[21], b[21], c[21], k0, k1, k2, charcnt, lc);
+
+always @*
+  case (count12)
+    4'b0000: k0[31:24] <= char;
+    4'b0001: k0[23:16] <= char;
+    4'b0010: k0[15:8]  <= char;
+    4'b0011: k0[7:0]   <= char;
+    4'b0100: k1[31:24] <= char;
+    4'b0101: k1[23:16] <= char;
+    4'b0110: k1[15:8]  <= char;
+    4'b0111: k1[7:0]   <= char;
+    4'b1000: k2[31:24] <= char;
+    4'b1001: k2[23:16] <= char;
+    4'b1010: k2[15:8]  <= char;
+    4'b1011: k2[7:0]   <= char;
+  endcase
+
+wire emit = (count12 == 4'b1100 || !charcnt) ? 1'b1 : 1'b0;
+
+always @(posedge CLK) begin
+  if (RST)
+    count12 <= 4'b0;
+  else begin
+    if (charcnt) begin
+      if (count12 == 4'b1100) begin
+        count12 <= 4'b0;
+        k0      <= 32'b0;
+        k1      <= 32'b0;
+        k2      <= 32'b0;
+      end else
+        count12 <= count12 + 4'b1;
+    end else begin
+      count12 <= 4'b0;
+      k0      <= 32'b0;
+      k1      <= 32'b0;
+      k2      <= 32'b0;
+    end
+  end
+end
 
 always @(posedge CLK) begin
   if (RST)
@@ -219,5 +257,6 @@ always @(posedge CLK) begin
   else
     hashkey <= lc;
 end
+
 endmodule
 
