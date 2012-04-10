@@ -6,27 +6,31 @@
  * http://burtleburtle.net/bob/c/lookup3.c
  */
 
+`define dbg 1
+
 module hash_r1 #(
   parameter maxwords = 250                  // MAX number of key length.
+`ifdef dbg
 , parameter nloop    = 21
-//, parameter nloop    = div12p1(maxwords)
+`else
+, parameter nloop    = div12p1(maxwords)
+`endif
 )(
   input CLK
 , input RST
+, input emit
+, input onloop
 , input [31:0] ia
 , input [31:0] ib
 , input [31:0] ic
-, input [7:0]  iw
 , input [31:0] k0
 , input [31:0] k1
 , input [31:0] k2
 , output reg[31:0] oa
 , output reg[31:0] ob
 , output reg[31:0] oc
-, output reg[7:0]  ow
 );
 
-/*
 function [4:0] div12p1;
   input [7:0] nwords;
 begin
@@ -34,9 +38,7 @@ begin
     nwords = nwords - 12;
 end
 endfunction
-*/
 
-wire[7:0]  w0 = iw - 8'd12;
 wire[31:0] a0 = ia + k0;
 wire[31:0] b0 = ib + k1;
 wire[31:0] c0 = ic + k2;
@@ -58,18 +60,17 @@ always @(posedge CLK) begin
     oa <= 32'b0;
     ob <= 32'b0;
     oc <= 32'b0;
-    ow <= 8'b0;
   end else begin
-    if (iw > 8'd12) begin
-      oa <= a4;
-      oc <= c4;
-      ob <= b4;
-      ow <= w0;
-    end else begin
-      oa <= ia;
-      ob <= ib;
-      oc <= ic;
-      ow <= iw;
+    if (emit) begin
+      if (onloop) begin
+        oa <= a4;
+        oc <= c4;
+        ob <= b4;
+      end else begin
+        oa <= ia;
+        ob <= ib;
+        oc <= ic;
+      end
     end
   end
 end
@@ -78,10 +79,12 @@ endmodule
 module hash_r2 (
   input CLK
 , input RST
+, input emit
+, input onloop
+, input [3:0] wcount
 , input [31:0] ia
 , input [31:0] ib
 , input [31:0] ic
-, input [7:0]  iw
 , input [31:0] k0
 , input [31:0] k1
 , input [31:0] k2
@@ -102,16 +105,17 @@ always @(posedge CLK) begin
   if (RST)
     o <= 32'b0;
   else begin
-    if (iw) begin
-      o <= c3;
-    end else begin
-      o <= ic;
+    if (emit) begin
+      if (onloop)
+        o <= c3;
+      else
+        o <= ic;
     end
   end
 end
 
 always @* begin
-  case (iw)
+  case (wcount)
     8'd12: begin
       c0 <= ic + k2;
       b0 <= ib + k1;
@@ -180,12 +184,15 @@ endmodule
 module hash (
   input CLK
 , input RST
-, input [7:0] charcnt  // remaining character counts
-, input [7:0] char     // character of key
+, input enable
+, input onloop
+, input [3:0] wcount         // remaining character counts
+, input [7:0] word           // a character of key
+, input [7:0] key_length     // from memcache binary header
+, input [7:0] interval       // temp bitwidth
+, output valid
 , output reg[31:0] hashkey
 );
-
-parameter interval = 1'b0;  // tmp
 
 reg[31:0] k0, k1, k2;
 reg[3:0]  count12;
@@ -193,55 +200,54 @@ reg[3:0]  count12;
 wire[31:0] a[0:21];
 wire[31:0] b[0:21];
 wire[31:0] c[0:21];
-wire[31:0] lc;       // last c
+wire[31:0] lc;               // last c
 
 /* round 0 */
 assign a[0] = k0 + 32'hDEADBEEF + key_length + interval;
 assign b[0] = k1 + 32'hDEADBEEF + key_length + interval;
 assign c[0] = k2 + 32'hDEADBEEF + key_length + interval;
-assign w[0] = key_length;
 
 /* round 1 ~ nloop */
 generate
   genvar i;
   for (i=1; i<22; i=i+1) begin :loop
-    hash_r1 round (CLK, RST, a[i-1], b[i-1], c[i-1], k0, k1, k2, charcnt, a[i], b[i], c[i]);
+    hash_r1 round (CLK, RST, emit, onloop, a[i-1], b[i-1], c[i-1], k0, k1, k2, a[i], b[i], c[i]);
   end
 endgenerate
 
 /* last round */
-hash_r2 lastround (CLK, RST, a[21], b[21], c[21], k0, k1, k2, charcnt, lc);
+hash_r2 lastround (CLK, RST, emit, onloop, wcount, a[21], b[21], c[21], k0, k1, k2, lc);
 
 always @*
   case (count12)
-    4'b0000: k0[31:24] <= char;
-    4'b0001: k0[23:16] <= char;
-    4'b0010: k0[15:8]  <= char;
-    4'b0011: k0[7:0]   <= char;
-    4'b0100: k1[31:24] <= char;
-    4'b0101: k1[23:16] <= char;
-    4'b0110: k1[15:8]  <= char;
-    4'b0111: k1[7:0]   <= char;
-    4'b1000: k2[31:24] <= char;
-    4'b1001: k2[23:16] <= char;
-    4'b1010: k2[15:8]  <= char;
-    4'b1011: k2[7:0]   <= char;
+    4'b0000: k0[31:24] <= word;
+    4'b0001: k0[23:16] <= word;
+    4'b0010: k0[15:8]  <= word;
+    4'b0011: k0[7:0]   <= word;
+    4'b0100: k1[31:24] <= word;
+    4'b0101: k1[23:16] <= word;
+    4'b0110: k1[15:8]  <= word;
+    4'b0111: k1[7:0]   <= word;
+    4'b1000: k2[31:24] <= word;
+    4'b1001: k2[23:16] <= word;
+    4'b1010: k2[15:8]  <= word;
+    4'b1011: k2[7:0]   <= word;
   endcase
 
-wire emit = (count12 == 4'b1100 || !charcnt) ? 1'b1 : 1'b0;
+wire emit = (count12 == 4'b1100) ? 1'b1 : 1'b0;
 
 always @(posedge CLK) begin
   if (RST)
     count12 <= 4'b0;
   else begin
-    if (charcnt) begin
+    if (enable) begin
       if (count12 == 4'b1100) begin
         count12 <= 4'b0;
         k0      <= 32'b0;
         k1      <= 32'b0;
         k2      <= 32'b0;
       end else
-        count12 <= count12 + 4'b1;
+        count12 <= count12 ? count12 - 4'b1 : 4'd12;
     end else begin
       count12 <= 4'b0;
       k0      <= 32'b0;
@@ -253,7 +259,7 @@ end
 
 always @(posedge CLK) begin
   if (RST)
-    hashkey <= 32'hFFFFFFFF;
+    hashkey <= 32'b0;
   else
     hashkey <= lc;
 end
