@@ -81,7 +81,7 @@ module hash_r2 (
 , input RST
 , input emit
 , input onloop
-, input [3:0] wcount
+, input [7:0] wcount
 , input [31:0] ia
 , input [31:0] ib
 , input [31:0] ic
@@ -186,10 +186,10 @@ module hash (
 , input RST
 , input enable
 , input onloop
-, input [3:0] wcount         // remaining character counts
-, input [7:0] word           // a character of key
-, input [7:0] key_length     // from memcache binary header
-, input [7:0] interval       // temp bitwidth
+, input [7:0] wcount      // remaining character counts (0 ~ 12)
+, input [7:0] word        // a character of key
+, input [7:0] key_length  // key length
+, input [7:0] interval
 , output valid
 , output reg[31:0] hashkey
 );
@@ -200,7 +200,7 @@ reg[3:0]  count12;
 wire[31:0] a[0:21];
 wire[31:0] b[0:21];
 wire[31:0] c[0:21];
-wire[31:0] lc;               // last c
+wire[31:0] lc;            // last c
 
 /* round 0 */
 assign a[0] = k0 + 32'hDEADBEEF + key_length + interval;
@@ -211,48 +211,70 @@ assign c[0] = k2 + 32'hDEADBEEF + key_length + interval;
 generate
   genvar i;
   for (i=1; i<22; i=i+1) begin :loop
-    hash_r1 round (CLK, RST, emit, onloop, a[i-1], b[i-1], c[i-1], k0, k1, k2, a[i], b[i], c[i]);
+    hash_r1 round ( .CLK(CLK)
+                  , .RST(RST)
+                  , .emit(emit)
+                  , .onloop(onloop)
+                  , .ia(a[i-1])
+                  , .ib(b[i-1])
+                  , .ic(c[i-1])
+                  , .k0(k0)
+                  , .k1(k1)
+                  , .k2(k2)
+                  , .oa(a[i])
+                  , .ob(b[i])
+                  , .oc(c[i]) );
   end
 endgenerate
 
 /* last round */
-hash_r2 lastround (CLK, RST, emit, onloop, wcount, a[21], b[21], c[21], k0, k1, k2, lc);
+hash_r2 lastround ( .CLK(CLK)
+                  , .RST(RST)
+                  , .emit(emit)
+                  , .onloop(onloop)
+                  , .wcount(wcount)
+                  , .ia(a[21])
+                  , .ib(b[21])
+                  , .ic(c[21])
+                  , .k0(k0)
+                  , .k1(k1)
+                  , .k2(k2)
+                  , .o(lc) );
 
 always @*
   case (count12)
-    4'b0000: k0[31:24] <= word;
-    4'b0001: k0[23:16] <= word;
-    4'b0010: k0[15:8]  <= word;
-    4'b0011: k0[7:0]   <= word;
-    4'b0100: k1[31:24] <= word;
-    4'b0101: k1[23:16] <= word;
-    4'b0110: k1[15:8]  <= word;
-    4'b0111: k1[7:0]   <= word;
-    4'b1000: k2[31:24] <= word;
-    4'b1001: k2[23:16] <= word;
-    4'b1010: k2[15:8]  <= word;
-    4'b1011: k2[7:0]   <= word;
+    4'd12: k0[31:24] <= word;
+    4'd11: k0[23:16] <= word;
+    4'd10: k0[15:8]  <= word;
+    4'd9:  k0[7:0]   <= word;
+    4'd8:  k1[31:24] <= word;
+    4'd7:  k1[23:16] <= word;
+    4'd6:  k1[15:8]  <= word;
+    4'd5:  k1[7:0]   <= word;
+    4'd4:  k2[31:24] <= word;
+    4'd3:  k2[23:16] <= word;
+    4'd2:  k2[15:8]  <= word;
+    4'd1:  k2[7:0]   <= word;
   endcase
 
-wire emit = (count12 == 4'b1100) ? 1'b1 : 1'b0;
+wire emit = (count12) ? 4'b0 : 4'b1;
 
 always @(posedge CLK) begin
-  if (RST)
-    count12 <= 4'b0;
-  else begin
+  if (RST) begin
+    count12 <= 4'd12;
+    k0      <= 32'b0;
+    k1      <= 32'b0;
+    k2      <= 32'b0;
+  end else begin
     if (enable) begin
-      if (count12 == 4'b1100) begin
-        count12 <= 4'b0;
+      if (count12)
+        count12 <= count12 - 4'b1;
+      else begin
+        count12 <= 4'd12;
         k0      <= 32'b0;
         k1      <= 32'b0;
         k2      <= 32'b0;
-      end else
-        count12 <= count12 ? count12 - 4'b1 : 4'd12;
-    end else begin
-      count12 <= 4'b0;
-      k0      <= 32'b0;
-      k1      <= 32'b0;
-      k2      <= 32'b0;
+      end
     end
   end
 end
